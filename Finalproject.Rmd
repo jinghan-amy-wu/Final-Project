@@ -2,10 +2,160 @@
 title: "Final_Project"
 author: "JingHan Wu"
 date: "2026-10-18"
-output: html_document
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
 ---
 
+## Data wrangling
+```{r, message=FALSE}
+# Read three csv files into R
+covar  <- read.csv("GSE85307_covar-1.csv")
+expr   <- read.csv("GSE85307_geneExpression.csv")
+linker <- read.csv("GSE85307_geneNames.csv")
+
+# Rename the blank column header in gene expression file as "PROBEID" to match the 
+#gene names file
+names(expr)[1] <- "PROBEID"
+
+# Check how many rows
+nrow(expr)
+
+# Merge the gene expression file with the linker file
+expr_named <- merge(expr, linker, by = "PROBEID")
+
+# Check to see if the number of rows is matching (=500)
+nrow(expr_named)
+
+# Convert the new expr_named into a long data
+library(tidyverse)
+longexprData <- expr_named %>%
+  pivot_longer(cols = starts_with("GSM"),
+                      names_to = 'geoID',
+                      values_to = 'Expression')
+
+# Merge the long data with covariate data set matching geoID
+df <- merge(longexprData, covar, by= "geoID")
+
+sum(is.na(df$Expression))     # should be 0
+length(unique(df$geoID))      # should be 157
+nrow(df)                      # should be 500 * 157 = 78500
+
+# Spot check that expression values stayed matched to the correct sample
+#(a value in the merged data should equal the same cell in the original file)
+s <- colnames(expr)[2]        # first sample column
+df$Expression[df$PROBEID == 7924712 & df$geoID == s] ==
+  expr[expr$PROBEID == 7924712, s]   # TRUE= it matches
+
+# Look at the first 10 rows of df (specify to variables of interest)
+head(df[, c("geoID", "GENE", "Expression", "preg_preeclampsia")], 10)
+```
+
+## Gene of interest and Variables of interest
+
+(Identify one gene, one continuous covariate, and two categorical covariates of 
+interest. At least one categorical variable should be derived from a continuous 
+variable)
+
+**Gene:** LIN9 (PROBEID 7924712). LIN9 was selected because it is measured in 
+all 157 subjects and varies across them.
+
+**Continuous covariate:** Maternal BMI ("mat_BMI", kg/m²). 
+
+**Two categorical covariates:** 
+
+1. Pregnancy outcome ("preg_preeclampsia"): Preeclampsia vs. Normal.
+2. Vitamin D status ("vitD_status"): derived from the continuous variable 
+maternal vitamin D ("mat_vitD", ng/mL) using the cutoffs <30 = Insufficient 
+and >=30 = Sufficient. (Mirzakhani H, Litonjua AA, McElrath TF, et al. 
+Early pregnancy vitamin D status and risk of preeclampsia. J Clin Invest. 
+2016;126(12):4702-4715. doi:10.1172/JCI89031)
 ```{r}
-x <- c(1, 2, 3, 4)
-y <- c(2, 4, 5, 6)
+# Remove the text prefix in chosen covariates and change BMI and vit D to numeric
+df$mat_BMI  <- as.numeric(sub(".*: ", "", df$mat_BMI))
+df$mat_vitD <- as.numeric(sub(".*: ", "", df$mat_vitD))
+df$preg_preeclampsia <- sub(".*: ", "", df$preg_preeclampsia)
+
+# Assign cut offs to vit D status from the continuous variable 
+df$vitD_status <- ifelse(df$mat_vitD < 30, "Insufficient (<30 ng/mL)",
+                         "Sufficient (>=30 ng/mL)")
+# Filter to the chosen LIN9 gene 
+geneData <- df %>% filter(GENE == "LIN9")
+# Check the rows (should be 157)
+nrow(geneData)
+# Check group size and combinations 
+table(geneData$vitD_status, useNA = "ifany") 
+table(geneData$preg_preeclampsia, geneData$vitD_status) #Match the paper results
+```
+Define a custom theme that will be applied to the three plots
+```{r}
+# Define a custom theme
+Theme <- theme(# Remove all the extra borders and grid lines
+        panel.border = element_blank(), panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        # Define the axis
+        axis.line = element_line(colour = "black", linewidth = rel(1)),
+        axis.title = element_text(color = "black", face = 'bold', size=14),
+        axis.text  = element_text(color = "black", face='bold', size=14),
+        # Set plot background
+        plot.background = element_rect(fill = "white"),
+        panel.background = element_blank(),
+        # Set the legend
+        legend.background = element_rect(fill = "white"),
+        legend.text= element_text(color= "black", face='bold', size=13),
+        legend.title= element_text(color= "black", face='bold', size=13),
+        # Move legend to the top
+        legend.position = 'top',
+        # Set the plot title color and make it centered 
+        plot.title = element_text(color = "black", 
+                                  face = "bold", size = 15, hjust = 0.5))
+
+```
+
+## Generate a histogram of gene expression of my chosen gene "LIN9"
+```{r}
+# Compute a histogram with geom_histogram, set the x axis to gene expression
+ggplot(geneData, aes(x=Expression)) +
+  geom_histogram(bins= 15, fill= "steelblue", color="white") +
+  # Change labels
+  labs (x= "LIN9 Expression", y= "Number of Subjects",
+        title= "Distribution of LIN9 Expression") +
+  # Set the theme to the custom theme
+  Theme
+```
+
+## Generate a scatterplot of Covariate vs. Gene Expression using the continuous covariate (BMI) and the LIN9 expression. 
+```{r}
+# Compute a scatter plot using ggplot and the custom theme 
+ggplot(geneData, aes(x = mat_BMI, y = Expression)) +
+  # Add scatter plot and define colors
+  geom_point(color= "steelblue", size = 2, alpha = 0.7) +
+  # Add regression line
+  geom_smooth(method = "lm", se = FALSE, color= "black", formula = y ~ x) +
+  # Change labels
+  labs(x = expression(bold("Maternal BMI (kg/m"^2*")")),
+       y = 'LIN9 Expression',
+       title = "LIN9 Expression vs Maternal BMI") +
+  # Set the theme to the custom theme
+  Theme
+```
+
+## Generate a boxplot of Gene Expression separated by both categorical variables
+```{r}
+# Compute a box plot using ggplot and the custom theme
+ggplot(geneData, aes(x= preg_preeclampsia, y= Expression, fill= vitD_status)) +
+  # Add boxplot and define colors
+  geom_boxplot() +
+  # Define colors 
+  scale_fill_manual(values = c("Insufficient (<30 ng/mL)" = "hotpink",
+                             "Sufficient (>=30 ng/mL)"  = "skyblue")) +
+  # Change labels
+  labs(x = "Pregnancy Outcome",y = "LIN9 Expression",fill = "Vitamin D Status",
+       # Break the title into two lines to fit
+       title = "LIN9 Expression by Pregnancy Outcome\nand Vitamin D Status") +
+  # Put the legend on two rows so the full labels fit
+  guides(fill = guide_legend(nrow = 2)) +
+  # Set the theme to the custom theme
+  Theme
 ```
