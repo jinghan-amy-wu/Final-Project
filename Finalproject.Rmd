@@ -144,18 +144,36 @@ ggplot(geneData, aes(x = mat_BMI, y = Expression)) +
 ## Generate a boxplot of Gene Expression separated by both categorical variables
 ```{r}
 # Compute a box plot using ggplot and the custom theme
-ggplot(geneData, aes(x= preg_preeclampsia, y= Expression, fill= vitD_status)) +
-  # Add boxplot and define colors
-  geom_boxplot() +
-  # Define colors 
+ggplot(geneData, aes(x = preg_preeclampsia, y = Expression, fill = vitD_status)) +
+  # Add boxplot (hide outlier dots because every subject is plotted below)
+  geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+  # Overlay each subject as a jittered point to show the sample size per group
+  geom_point(position = position_jitterdodge(jitter.width = 0.2,
+                                             dodge.width = 0.75,
+                                             seed = 103),
+             size = 1.8, alpha = 0.7) +
+  # Define colors
   scale_fill_manual(values = c("Insufficient (<30 ng/mL)" = "hotpink",
-                             "Sufficient (>=30 ng/mL)"  = "skyblue")) +
+                               "Sufficient (>=30 ng/mL)"  = "skyblue")) +
   # Change labels
-  labs(x = "Pregnancy Outcome",y = "LIN9 Expression",fill = "Vitamin D Status",
-       # Break the title into two lines to fit
+  labs(x = "Pregnancy Outcome", y = "LIN9 Expression", fill = "Vitamin D Status",
        title = "LIN9 Expression by Pregnancy Outcome\nand Vitamin D Status") +
   # Put the legend on two rows so the full labels fit
   guides(fill = guide_legend(nrow = 2)) +
   # Set the theme to the custom theme
   Theme
 ```
+
+Choosing two additional genes
+```{r}
+# Check what genes have highest SD (good spread)
+gene_sd <- df %>%
+  group_by(GENE) %>%
+  summarise(sd = sd(Expression)) %>%
+  # Arrange so that most variable genes go first
+  arrange(desc(sd))
+
+# Top 10 most variable genes
+head(gene_sd, 10)
+```
+
