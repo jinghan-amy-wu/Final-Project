@@ -175,5 +175,80 @@ gene_sd <- df %>%
 
 # Top 10 most variable genes
 head(gene_sd, 10)
+
+# I will choose UTS2 and RUNDC3A as my two additional genes
 ```
+Generate a function to produce the submission 1 plots and new plots for the two
+additional genes
+```{r}
+# Function to produce histogram, scatterplot, and boxplot for each gene
+buildPlots <- function(data, geneList, contVar, catVars, contLabel = contVar, 
+                       catLabels = catVars) {
+  # Loop through each gene in the geneList
+  for (gene in geneList) {
+    # Subset to one current gene
+    geneData <- data[data$GENE == gene,]
+    
+    # Add histogram of gene expression
+    plot1 <- ggplot(geneData, aes(x = Expression)) +
+      # 15 bins used because it is shows the shape clearly for 157 subjects
+      geom_histogram(bins=15, fill= "steelblue", color = "white") +
+      # paste() puts the current gene name into the labels
+      labs(x = paste(gene, "Expression"), y = "Number of Subjects", 
+           title = paste("Distribution of", gene, "Expression")) +
+      # Apply the custom theme
+      Theme
+    # Display the plot
+    print(plot1)
+    
+    # Add scatterplot of the continous covariate vs expression
+    # x = .data[[contVar]] reads the column whose name is stored in the string, 
+    #since x= contVar will plot the text itself
+    plot2 <- ggplot(geneData, aes(x = .data[[contVar]], y = Expression)) +
+    # alpha=0.7 makes overlapping points visible
+      geom_point(color = "steelblue", size = 2, alpha = 0.7) +
+      # Avoid a console message
+      geom_smooth(method = "lm", se = FALSE, color = "black", formula = y ~ x) +
+      labs(x = contLabel, y = paste(gene, "Expression"),
+           title = paste(gene, "Expression vs", contLabel)) +
+      Theme
+    print(plot2)
+    
+    # Add boxplot by both categorical covariates with jittered points
+    plot3 <- ggplot(geneData, aes(x = .data[[catVars[1]]], y = Expression,
+                               fill = .data[[catVars[2]]])) +
+      # Hide the plot's own outliers because all subjects are plotted below and 
+      #outliers would be drawn twice otherwise
+      geom_boxplot(outlier.shape = NA, alpha = 0.7) +
+      # Add jitter
+      geom_point(position = position_jitterdodge(jitter.width = 0.2,
+                                                 dodge.width = 0.75,
+                                                 # set seed so jitters are the 
+                                                 #same each time
+                                                 seed = 103),
+                 size = 1.8, alpha = 0.7) +
+      scale_fill_manual(values = c("hotpink", "skyblue")) +
+      labs(x = catLabels[1], y = paste(gene, "Expression"), fill = catLabels[2],
+           title = paste0(gene, " Expression by ", catLabels[1],
+                          # break the title into two lines
+                          "\nand ", catLabels[2])) +
+      # put legends on two rows so full labels can fit
+      guides(fill = guide_legend(nrow = 2)) +
+      Theme
+    print(plot3)
+  }
+}
+```
+
+Call the function for each gene
+```{r}
+# Print the 9 plots using the function
+buildPlots(data = df,
+           geneList = c("LIN9", "UTS2", "RUNDC3A"),
+           contVar = "mat_BMI",
+           catVars = c("preg_preeclampsia", "vitD_status"),
+           contLabel = "Maternal BMI (kg/m\u00b2)",
+           catLabels = c("Pregnancy Outcome", "Vitamin D Status"))
+```
+
 
