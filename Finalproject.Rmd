@@ -88,6 +88,42 @@ nrow(geneData)
 table(geneData$vitD_status, useNA = "ifany") 
 table(geneData$preg_preeclampsia, geneData$vitD_status) #Match the paper results
 ```
+Finding two additional continuous variables, beside maternal BMI:
+
+1. *Maternal age* (mat_age_yrs), which is a common covariate that would appear in
+a Table 1. 
+
+2. *Gestational age at delivery* (delivery_gestAge_wks), which is relevant to 
+preeclampsia (often leads to earlier delivery)
+
+```{r}
+# Clean the extra prefix in the maternal age variable
+df$mat_age_yrs <- sub(".*:","", df$mat_age_yrs)
+# Check what type of variable is this
+str(df$mat_age_yrs)
+# Convert to numeric
+df$mat_age_yrs <- as.numeric(df$mat_age_yrs)
+# Check if it is numeric now
+str(df$mat_age_yrs)
+
+# Repeat the same with gestational age at delivery
+df$delivery_gestAge_wks <- sub(".*:","", df$delivery_gestAge_wks)
+str(df$delivery_gestAge_wks)
+# Convert to numeric
+df$delivery_gestAge_wks <- as.numeric(df$delivery_gestAge_wks)
+str(df$delivery_gestAge_wks)
+
+# Create the data that is filtered to one gene again so it includes the new 
+#cleaned covariates, because otherwise the old geneData still have the two 
+#covariates as characters
+geneData <- df %>% filter(GENE == "LIN9")
+
+# Use the filtered data (geneData) to check if the new covariates have any NAs
+colSums(is.na(geneData[, c("mat_age_yrs", "delivery_gestAge_wks")])) # all 0 :)
+
+```
+
+
 Define a custom theme that will be applied to the three plots
 ```{r}
 # Define a custom theme
@@ -96,31 +132,39 @@ Theme <- theme(# Remove all the extra borders and grid lines
         panel.grid.minor = element_blank(), 
         # Define the axis
         axis.line = element_line(colour = "black", linewidth = rel(1)),
-        axis.title = element_text(color = "black", face = 'bold', size=14),
-        axis.text  = element_text(color = "black", face='bold', size=14),
+        # element_markdown instead of element_text allow to use *...* to make
+        #text italic (which will be used for gene names)
+        axis.title.x = element_markdown(color = "black", face = 'bold', size=14),
+        axis.title.y = element_markdown(color = "black", face = 'bold', size=14),
+        axis.text  = element_markdown(color = "black", face='bold', size=14),
         # Set plot background
         plot.background = element_rect(fill = "white"),
         panel.background = element_blank(),
         # Set the legend
         legend.background = element_rect(fill = "white"),
-        legend.text= element_text(color= "black", face='bold', size=13),
-        legend.title= element_text(color= "black", face='bold', size=13),
+        legend.text= element_markdown(color= "black", face='bold', size=13),
+        legend.title= element_markdown(color= "black", face='bold', size=13),
         # Move legend to the top
         legend.position = 'top',
         # Set the plot title color and make it centered 
-        plot.title = element_text(color = "black", 
+        plot.title = element_markdown(color = "black", 
                                   face = "bold", size = 15, hjust = 0.5))
 
 ```
 
 ## Generate a histogram of gene expression of my chosen gene "LIN9"
 ```{r}
+# Install ggtext to italicize text later
+#install.packages("ggtext")
+# Load ggtext 
+library(ggtext)
 # Compute a histogram with geom_histogram, set the x axis to gene expression
 ggplot(geneData, aes(x=Expression)) +
   geom_histogram(bins= 15, fill= "steelblue", color="white") +
-  # Change labels
-  labs (x= "LIN9 Expression", y= "Number of Subjects",
-        title= "Distribution of LIN9 Expression") +
+  # Change labels (the *...* make the gene name italic)
+  labs (x= paste0("*LIN9* Expression"), 
+        y= "Number of Subjects",
+        title= paste0("Distribution of *LIN9* Expression")) +
   # Set the theme to the custom theme
   Theme
 ```
@@ -135,8 +179,8 @@ ggplot(geneData, aes(x = mat_BMI, y = Expression)) +
   geom_smooth(method = "lm", se = FALSE, color= "black", formula = y ~ x) +
   # Change labels
   labs(x = expression(bold("Maternal BMI (kg/m"^2*")")),
-       y = 'LIN9 Expression',
-       title = "LIN9 Expression vs Maternal BMI") +
+       y = '*LIN9* Expression',
+       title = "*LIN9* Expression vs Maternal BMI") +
   # Set the theme to the custom theme
   Theme
 ```
@@ -156,15 +200,15 @@ ggplot(geneData, aes(x = preg_preeclampsia, y = Expression, fill = vitD_status))
   scale_fill_manual(values = c("Insufficient (<30 ng/mL)" = "hotpink",
                                "Sufficient (>=30 ng/mL)"  = "skyblue")) +
   # Change labels
-  labs(x = "Pregnancy Outcome", y = "LIN9 Expression", fill = "Vitamin D Status",
-       title = "LIN9 Expression by Pregnancy Outcome\nand Vitamin D Status") +
+  labs(x = "Pregnancy Outcome", y = "*LIN9 Expression*", fill = "Vitamin D Status",
+       title = "*LIN9* Expression by Pregnancy Outcome\nand Vitamin D Status") +
   # Put the legend on two rows so the full labels fit
   guides(fill = guide_legend(nrow = 2)) +
   # Set the theme to the custom theme
   Theme
 ```
 
-Choosing two additional genes
+## Choosing two additional genes
 ```{r}
 # Check what genes have highest SD (good spread)
 gene_sd <- df %>%
@@ -178,7 +222,7 @@ head(gene_sd, 10)
 
 # I will choose UTS2 and RUNDC3A as my two additional genes
 ```
-Generate a function to produce the submission 1 plots and new plots for the two
+## Generate a function to produce the submission 1 plots and new plots for the two
 additional genes
 ```{r}
 # Function to produce histogram, scatterplot, and boxplot for each gene
@@ -193,9 +237,10 @@ buildPlots <- function(data, geneList, contVar, catVars, contLabel = contVar,
     plot1 <- ggplot(geneData, aes(x = Expression)) +
       # 15 bins used because it is shows the shape clearly for 157 subjects
       geom_histogram(bins=15, fill= "steelblue", color = "white") +
-      # paste() puts the current gene name into the labels
-      labs(x = paste(gene, "Expression"), y = "Number of Subjects", 
-           title = paste("Distribution of", gene, "Expression")) +
+      # paste0() puts the current gene name into the labels, and *...* italicize
+      #the gene name
+      labs(x = paste0("*", gene, "* Expression"), y = "Number of Subjects", 
+           title = paste0("Distribution of *", gene, "* Expression")) +
       # Apply the custom theme
       Theme
     # Display the plot
@@ -207,20 +252,24 @@ buildPlots <- function(data, geneList, contVar, catVars, contLabel = contVar,
     plot2 <- ggplot(geneData, aes(x = .data[[contVar]], y = Expression)) +
     # alpha=0.7 makes overlapping points visible
       geom_point(color = "steelblue", size = 2, alpha = 0.7) +
-      # Avoid a console message
+      # Avoid a console message by adding formula = y~x
       geom_smooth(method = "lm", se = FALSE, color = "black", formula = y ~ x) +
-      labs(x = contLabel, y = paste(gene, "Expression"),
-           title = paste(gene, "Expression vs", contLabel)) +
+      # Set up the axis titles, gene expression
+      labs(x = contLabel, y = paste0("*", gene, "* Expression"),
+           title = paste0("*", gene, "* Expression vs ", contLabel)) +
+      # Apply theme
       Theme
+    # Print the second plot 
     print(plot2)
     
     # Add boxplot by both categorical covariates with jittered points
     plot3 <- ggplot(geneData, aes(x = .data[[catVars[1]]], y = Expression,
                                fill = .data[[catVars[2]]])) +
       # Hide the plot's own outliers because all subjects are plotted below and 
-      #outliers would be drawn twice otherwise
+      #outliers would be drawn twice otherwise (this was pointed out by Claude when
+      #using it to check my function)
       geom_boxplot(outlier.shape = NA, alpha = 0.7) +
-      # Add jitter
+      # Add jitter (this function is helped by Claude)
       geom_point(position = position_jitterdodge(jitter.width = 0.2,
                                                  dodge.width = 0.75,
                                                  # set seed so jitters are the 
@@ -228,10 +277,11 @@ buildPlots <- function(data, geneList, contVar, catVars, contLabel = contVar,
                                                  seed = 103),
                  size = 1.8, alpha = 0.7) +
       scale_fill_manual(values = c("hotpink", "skyblue")) +
-      labs(x = catLabels[1], y = paste(gene, "Expression"), fill = catLabels[2],
-           title = paste0(gene, " Expression by ", catLabels[1],
-                          # break the title into two lines
-                          "\nand ", catLabels[2])) +
+      labs(x = catLabels[1], y = paste0("*", gene, "* Expression"), fill = catLabels[2],
+           title = paste0("*", gene, "* Expression by ", catLabels[1],
+                          # break the title into two lines (this function is helped
+                          # by Claude)
+                          "<br>and ", catLabels[2])) +
       # put legends on two rows so full labels can fit
       guides(fill = guide_legend(nrow = 2)) +
       Theme
@@ -240,7 +290,7 @@ buildPlots <- function(data, geneList, contVar, catVars, contLabel = contVar,
 }
 ```
 
-Call the function for each gene
+## Call the function for each gene
 ```{r}
 # Print the 9 plots using the function
 buildPlots(data = df,
@@ -250,5 +300,7 @@ buildPlots(data = df,
            contLabel = "Maternal BMI (kg/m\u00b2)",
            catLabels = c("Pregnancy Outcome", "Vitamin D Status"))
 ```
+
+## 
 
 
