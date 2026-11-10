@@ -126,6 +126,10 @@ colSums(is.na(geneData[, c("mat_age_yrs", "delivery_gestAge_wks")])) # all 0 :)
 
 Define a custom theme that will be applied to the three plots
 ```{r}
+# Install ggtext to italicize text later
+#install.packages("ggtext")
+# Load ggtext 
+library(ggtext)
 # Define a custom theme
 Theme <- theme(# Remove all the extra borders and grid lines
         panel.border = element_blank(), panel.grid.major = element_blank(),
@@ -154,10 +158,6 @@ Theme <- theme(# Remove all the extra borders and grid lines
 
 ## Generate a histogram of gene expression of my chosen gene "LIN9"
 ```{r}
-# Install ggtext to italicize text later
-#install.packages("ggtext")
-# Load ggtext 
-library(ggtext)
 # Compute a histogram with geom_histogram, set the x axis to gene expression
 p1 <- ggplot(geneData, aes(x=Expression)) +
   geom_histogram(bins= 15, fill= "steelblue", color="white") +
@@ -330,6 +330,9 @@ clustering:
 *Chosen genes*: LIN9, UTS2, RUNDC3A, plus the rest 7 genes from the top 10 most 
 variable genes, which are TMEM176B, CEACAM6, CLIC2, SLC1A5, ZNF594, ZBTB41, 
 CAPZA2. 
+
+Extra resource used: https://jcoliver.github.io/learn-r/009-expression-heatmaps.html
+
 
 ```{r}
 # Top 10 most variable genes computed above
@@ -616,4 +619,23 @@ finalTable
 # Save table as csv file
 write.csv(finalTable, "finalTable.csv", row.names = FALSE)
 ```
+
+Cite the packages used
+```{r}
+# Check R version 
+R.version.string 
+# Check packages version
+packageVersion("tidyverse")
+packageVersion("ggplot2")
+packageVersion("ggtext")
+packageVersion("pheatmap")
+packageVersion("EnhancedVolcano")
+packageVersion("knitr")
+
+# Write BibTeX entries for R and the packages used into one file
+knitr::write_bib(c("base", "tidyverse", "ggplot2", "ggtext", "pheatmap",
+                   "EnhancedVolcano", "knitr"),
+                 file = "packages.bib")
+```
+
 
