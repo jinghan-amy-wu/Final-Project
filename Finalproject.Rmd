@@ -159,7 +159,7 @@ Theme <- theme(# Remove all the extra borders and grid lines
 # Load ggtext 
 library(ggtext)
 # Compute a histogram with geom_histogram, set the x axis to gene expression
-ggplot(geneData, aes(x=Expression)) +
+p1 <- ggplot(geneData, aes(x=Expression)) +
   geom_histogram(bins= 15, fill= "steelblue", color="white") +
   # Change labels (the *...* make the gene name italic)
   labs (x= paste0("*LIN9* Expression"), 
@@ -167,29 +167,46 @@ ggplot(geneData, aes(x=Expression)) +
         title= paste0("Distribution of *LIN9* Expression")) +
   # Set the theme to the custom theme
   Theme
+
+# Print plot
+p1
+
+# Save the plot as png
+ggsave("histogram_LIN9.png", plot=p1)
 ```
 
 ## Generate a scatterplot of Covariate vs. Gene Expression using the continuous covariate (BMI) and the LIN9 expression. 
 ```{r}
 # Compute a scatter plot using ggplot and the custom theme 
-ggplot(geneData, aes(x = mat_BMI, y = Expression)) +
+p2 <- ggplot(geneData, aes(x = mat_BMI, y = Expression)) +
   # Add scatter plot and define colors
   geom_point(color= "steelblue", size = 2, alpha = 0.7) +
   # Add regression line
   geom_smooth(method = "lm", se = FALSE, color= "black", formula = y ~ x) +
-  # Change labels
-  labs(x = expression(bold("Maternal BMI (kg/m"^2*")")),
-       y = '*LIN9* Expression',
+  # Change labels (sup is to make m^2 print out as superscript)
+  labs(x = "Maternal BMI (kg/m<sup>2</sup>)",
+       y = "*LIN9* Expression",
        title = "*LIN9* Expression vs Maternal BMI") +
   # Set the theme to the custom theme
   Theme
+
+# Print plot
+p2
+
+# Save the plot as png
+ggsave("scatterplot_LIN9.png", plot=p2)
 ```
 
 ## Generate a boxplot of Gene Expression separated by both categorical variables
+
+The jitter function is learned by watching this youtube video:
+https://www.youtube.com/watch?v=mbvU8fF4eGM&t=9s
+
 ```{r}
 # Compute a box plot using ggplot and the custom theme
-ggplot(geneData, aes(x = preg_preeclampsia, y = Expression, fill = vitD_status)) +
-  # Add boxplot (hide outlier dots because every subject is plotted below)
+p3 <- ggplot(geneData, aes(x = preg_preeclampsia, y = Expression, fill = vitD_status)) +
+  # Add boxplot (hide outlier dots because every subject is plotted below -- this 
+  #was pointed out by Claude when checking my plot with it)
   geom_boxplot(outlier.shape = NA, alpha = 0.7) +
   # Overlay each subject as a jittered point to show the sample size per group
   geom_point(position = position_jitterdodge(jitter.width = 0.2,
@@ -200,12 +217,18 @@ ggplot(geneData, aes(x = preg_preeclampsia, y = Expression, fill = vitD_status))
   scale_fill_manual(values = c("Insufficient (<30 ng/mL)" = "hotpink",
                                "Sufficient (>=30 ng/mL)"  = "skyblue")) +
   # Change labels
-  labs(x = "Pregnancy Outcome", y = "*LIN9 Expression*", fill = "Vitamin D Status",
+  labs(x = "Pregnancy Outcome", y = "*LIN9* Expression", fill = "Vitamin D Status",
        title = "*LIN9* Expression by Pregnancy Outcome\nand Vitamin D Status") +
   # Put the legend on two rows so the full labels fit
   guides(fill = guide_legend(nrow = 2)) +
   # Set the theme to the custom theme
   Theme
+
+# Print plot
+p3
+
+# Save plot as png
+ggsave("boxplot_LIN9.png", plot=p3)
 ```
 
 ## Choosing two additional genes
@@ -301,6 +324,296 @@ buildPlots(data = df,
            catLabels = c("Pregnancy Outcome", "Vitamin D Status"))
 ```
 
-## 
+## Generate a heat map with a total of 10 genes, 2 categorical variables, and
+clustering:
 
+*Chosen genes*: LIN9, UTS2, RUNDC3A, plus the rest 7 genes from the top 10 most 
+variable genes, which are TMEM176B, CEACAM6, CLIC2, SLC1A5, ZNF594, ZBTB41, 
+CAPZA2. 
+
+```{r}
+# Top 10 most variable genes computed above
+head(gene_sd, 10)
+
+# Put the chosen 10 genes into a vector
+heatGenes <- c("LIN9", "UTS2", "RUNDC3A", "TMEM176B", "CEACAM6", "CLIC2", "SLC1A5",
+               "ZNF594", "ZBTB41", "CAPZA2")
+
+# Use expr_named instead of df because it is already in wide format, which heat map
+#needs because it needs one row per gene
+heatdf <- expr_named %>%
+  # Filter to the 10 genes chosen above. %in% matches any value in the vector
+  filter(GENE %in% heatGenes) %>%
+  # select the GENE column and all columns whose names start with "GSM", which are 
+  #the sample IDs
+  select(GENE, starts_with("GSM")) %>%
+  # Move the GENE column into the row names so the matrix won't print out text and
+  #only holds numbers
+  column_to_rownames("GENE") %>%
+  # Set it as a matrix so heat map can use it
+  as.matrix()
+  
+# Check the dimension (should be 10 genes and 157 samples)
+dim(heatdf)
+
+# Generate a data frame for the tracking bars with one row per sample, and with the
+#geoID as row names so pheatmap can match them to the heat map columns
+annotationData <- data.frame(row.names = geneData$geoID,
+                             "Pregnancy Outcome" = geneData$preg_preeclampsia,
+                             "Vitamin D Status" = geneData$vitD_status,
+                             # Suggested by Claude, since R's default is check.names
+                             #= T, and it replace a space to a dot, so the name would
+                             #become pregnancy.outcome
+                             check.names = FALSE)
+
+# Define the colors for the tracking bars
+annotationColors <- list(
+  "Pregnancy Outcome" = c("Normal" = "lightgray", "Preeclampsia" = "purple3"),
+  "Vitamin D Status" = c("Insufficient (<30 ng/mL)" = "hotpink",
+                         "Sufficient (>=30 ng/mL)" = "skyblue"))
+
+# Generate the heat map with pheatmap function and with clustering
+library(pheatmap)
+
+pheatmap(heatdf, 
+         # Add cluster
+         clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         annotation_col = annotationData,
+         annotation_colors = annotationColors,
+         #Italicize the gene names: as.expression convert into an expression vector
+         #which can be used by a heat map, lapply() applies the function to each 
+         #gene, and the rest is the function to build a italic version of the gene name.
+         #This function is helped by Claude.
+         labels_row = as.expression(lapply(rownames(heatdf),
+                                           function(gene) bquote(italic(.(gene))))),
+         # Without a scale, the heat map shows raw value; with scale, it shows z-scores
+         #(compare a sample to its average in SD units); scale="row" means each gene
+         #is compared to itself.
+         scale = "row",
+         # Remove the 157 samples IDs otherwise they'll all overlap at the bottom
+         #(this was generated with help from Claude when checking my heat map)
+         show_colnames = FALSE,
+         # Save the heat map to a png file using the build-in function in pheatmap
+         filename = "gene_heatmap.png")
+```
+```{r}
+# The above pheatmap function will not display the heat map in R after saving it 
+#to a png, so display the heat map below again 
+knitr::include_graphics("gene_heatmap.png")
+```
+
+## Genearte an additional plot type not discussed in class to visualize the gene
+data.
+
+I choose to use *Volcano plot* and the EnhancedVolcano package to generate the plot,
+since volcano plot is a standard genomics plot, and it uses all 500 genes.
+
+Extra resources are used to generate volcano plot:
+https://bioconductor.org/packages/release/bioc/vignettes/EnhancedVolcano/inst/doc
+/EnhancedVolcano.html#plot-the-most-basic-volcano-plot 
+
+
+```{r}
+#install.packages("BiocManager")
+library(EnhancedVolcano)
+
+# Below is computed with help from Claude, including how to compute t-test
+#p-value
+
+# Compute difference in mean expression and t-test p-values (preeclampsia vs normal) 
+#in each gene
+res <- df %>%
+  #group by GENE splits df into 500 groups (one per gene), each with 157 rows
+  group_by(GENE) %>%
+  summarise(
+    # Difference in mean expression between the two pregnancy outcome
+    diff = mean(Expression[preg_preeclampsia == "Preeclampsia"]) -
+           mean(Expression[preg_preeclampsia == "Normal"]),
+    # Welch t-test p-value comparing the two pregnancy outcome
+    p = t.test(Expression[preg_preeclampsia == "Preeclampsia"],
+               Expression[preg_preeclampsia == "Normal"])$p.value)
+  
+# Check if there's one row per gene -- it should show 500
+nrow(res)
+
+# Convert res into a data frame to be used in the volcano plot
+res <- as.data.frame(res)
+
+# Generate the volcano plot
+volcano <- EnhancedVolcano(res,
+                           #Gene names for the labels
+                           lab = res$GENE,
+                           #x is the difference in mean expression, y is the p-value
+                           x = "diff",
+                           y = "p",
+                           # Only label the three chosen genes in italics
+                           selectLab = c("LIN9", "UTS2", "RUNDC3A"),
+                           labFace = "italic",
+                           labSize = 5,
+                           # Move the labels away if overlap with the point, and 
+                           #draw a short line to point to which point it labels
+                           drawConnectors = TRUE,
+                           # Set up cutoff lines at p=0.05
+                           pCutoff = 0.05,
+                           # Set up a visual cutoff line at the difference
+                           FCcutoff = 0.1,
+                           # Set up axis labels
+                           xlab = "Difference in mean expression (Preeclampsia - Normal)",
+                           # It will plot -log10 by default
+                           ylab = "-log10 (unadjusted p-value)",
+                           # Rename the legend since the default shows log2 FC
+                           legendLabels = c("Neither cutoff", "Difference", "p-value",
+                                       "p-value & difference"),
+                           # Make legend text smaller so it fits
+                           legendLabSize = 10,
+                           legendIconSize = 3,
+                           # Remove the default title, subtitle, and caption
+                           title = NULL,
+                           subtitle = NULL,
+                           caption = NULL,
+                           # Set the limits to zoom in so the points won't be crowded
+                           #in the middle
+                           xlim = c(-0.4, 0.4),
+                           ylim = c(0, 2.5),
+                           # Make it looks like the other figures
+                           pointSize = 2,
+                           gridlines.major = FALSE,
+                           gridlines.minor = FALSE
+                           )
+
+# Print the plot
+volcano 
+
+# Save it to png 
+ggsave("volcano_plot.png", plot = volcano)
+```
+
+Generate the Summary Statistics table 
+
+```{r}
+# Check what type of characters are each variable
+str(geneData)
+# Convert vitamin D status into factor instead of character
+geneData$vitD_status <- factor(geneData$vitD_status,
+                               levels = c("Insufficient (<30 ng/mL)",
+                                          "Sufficient (>=30 ng/mL)"))
+# Check if it is factor now
+str(geneData$vitD_status)
+
+# To determine who is a non-normal continuous variable, look at the distribution first
+hist(geneData$mat_BMI)
+hist(geneData$mat_age_yrs)
+hist(geneData$delivery_gestAge_wks)
+# All of them look skewed and non-normal. 
+
+# Create a function similar to the function to build table 1
+buildTable <- function(data, varList, nonnormVars="", catVars="") {
+  # Define an empty table
+  table1 <- matrix(nrow = 0, ncol = 2)
+  # Keep track of rows to indent
+  indentRows <- c()
+  # Loop through all variables
+  for (var in varList) {
+    # Define vector of variable values
+    x <- data[,var]
+    
+    # Identify if a variable is non-normal
+    if (var %in% nonnormVars) {
+      
+      # Calculate medians and IQRs
+      myMedian <- round(median(x), 1)
+      myIQR1 <- round(quantile(x,1/4),digits = 1)
+      myIQR2 <- round(quantile(x,3/4),digits = 1)
+      # Combine the values
+      value <- paste0(myMedian,' [',myIQR1,', ',myIQR2,']')
+      # Define a new row
+      newRow <- c(var,value)
+      # Add the new row to data
+      table1 <- rbind(table1,newRow)
+    }
+    
+    # Identify is a variable is categorical variable
+    if (var %in% catVars) {
+      
+      # Define new row for overall variable
+      newRow <- c(var,'')
+      # Add row to data frame
+      table1 <- rbind(table1,newRow)
+      
+      # Loop through levels of variable
+      for (level in levels(x)) {
+        # Calculate n and perc
+        n <- sum(x == level)
+        perc <- round(n/(length(x)) * 100,digits = 1)
+        
+        # Combine values
+        value <- paste0(n,' (',perc,')')
+        
+        # Define new row
+        newRow <- c(level,value)
+        # Add row to data frame
+        table1 <- rbind(table1,newRow)
+        # Add index to indented rows
+        indentRows <- c(indentRows,nrow(table1))
+      }
+    }
+    # Otherwise treat it as normally distributed
+    if (!(var %in% c(nonnormVars,catVars))) {
+      
+      # Calculate the mean and standard deviation
+      myMean <- round(mean(x),2)
+      mySD <- round(sd(x),2)
+      # Combine values
+      value <- paste0(myMean,' (',mySD,')')
+      
+      # Define new row
+      newRow <- c(var,value)
+      
+      # Add row to data frame
+      table1 <- rbind(table1,newRow)
+    }
+  }
+  #return the table
+  return(table1)
+}
+
+# Variables need to be included
+vars <- c("mat_BMI", "mat_age_yrs", "delivery_gestAge_wks", "vitD_status")
+# From the distribution, all three continuous variables are not normally distributed
+nonnorm <- c("mat_BMI", "mat_age_yrs", "delivery_gestAge_wks")
+
+# Create one column for all subjects, one for preeclampsia, and one for normal pregnancy
+#outcome
+colAll  <- buildTable(geneData, vars, nonnorm, "vitD_status")
+colNorm <- buildTable(subset(geneData, preg_preeclampsia == "Normal"),
+                         vars, nonnorm, "vitD_status")
+colPre   <- buildTable(subset(geneData, preg_preeclampsia == "Preeclampsia"),
+                         vars, nonnorm, "vitD_status")
+
+# Put the three columns side by side in the table, and column 1 has the row names
+finalTable <- data.frame(colAll[,1], colAll[,2], colNorm[,2], colPre[,2])
+
+# Define the row names 
+finalTable[,1] <- c("Maternal BMI (kg/m2), median [IQR]",
+                "Maternal age (years), median [IQR]",
+                "Gestational age at delivery (weeks), median [IQR]",
+                "Vitamin D status, n (%)",
+                "Insufficient (<30 ng/mL)",
+                "Sufficient (>=30 ng/mL)")
+
+# Define column header names with the sample size (n) of each group (format is helped
+#by Claude)
+colnames(finalTable) <- c("Variable",
+                     paste0("Overall (n = ", nrow(geneData), ")"),
+                     paste0("Normal (n = ", sum(geneData$preg_preeclampsia == 
+                                                  "Normal"), ")"),
+                     paste0("Preeclampsia (n = ", sum(geneData$preg_preeclampsia == 
+                                                        "Preeclampsia"), ")"))
+# print the final table
+finalTable
+
+# Save table as csv file
+write.csv(finalTable, "finalTable.csv", row.names = FALSE)
+```
 
